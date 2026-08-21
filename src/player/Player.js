@@ -166,16 +166,19 @@ export class Player {
   }
 
   /** @returns {number} seconds remaining, or 0 if alive / just respawned */
-  updateRespawn(world) {
+  updateRespawn(world, enemies = []) {
     if (!this.dead) return 0;
     const left = (this.respawnAt - performance.now()) / 1000;
     if (left > 0) return left;
-    this.respawn(world);
+    this.respawn(world, enemies);
     return 0;
   }
 
-  respawn(world) {
-    const spawn = world.getRandomSpawnPosition?.() ?? world.getSpawnPosition();
+  respawn(world, enemies = []) {
+    const spawn =
+      world.getFarthestSpawnPosition?.(enemies) ??
+      world.getRandomSpawnPosition?.() ??
+      world.getSpawnPosition();
     this.position.x = spawn.x;
     this.position.y = spawn.y;
     this.position.z = spawn.z;

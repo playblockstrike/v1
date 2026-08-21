@@ -83,7 +83,12 @@ export class SoloMatch {
   update(dt, player, camera, renderer) {
     if (!this.active) return;
     for (const bot of this.bots) {
-      const result = bot.update(dt, player, this.weapons, this.audio);
+      const avoid = [];
+      if (player && !player.dead) avoid.push(player.position);
+      for (const other of this.bots) {
+        if (other !== bot && !other.dead) avoid.push(other.position);
+      }
+      const result = bot.update(dt, player, this.weapons, this.audio, avoid);
       if (result === 'void') this.noteBotVoid(bot.id);
       bot.remote.update(dt, camera, renderer);
     }

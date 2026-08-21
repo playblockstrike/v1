@@ -171,44 +171,95 @@ export class World {
     return { x, y: y + 1, z };
   }
 
+  spawnFromPad(pad) {
+    if (typeof pad.y === 'number') {
+      return { x: pad.x, y: pad.y, z: pad.z };
+    }
+    return this.standPosition(pad.x, pad.z);
+  }
+
   getSpawnPosition() {
     if (!this.loaded) this.loadAll();
     const pads = this.terrain.spawns;
-    if (pads?.length) {
-      const pad = pads[0];
-      if (typeof pad.y === 'number') {
-        return { x: pad.x, y: pad.y, z: pad.z };
-      }
-      return this.standPosition(pad.x, pad.z);
-    }
+    if (pads?.length) return this.spawnFromPad(pads[0]);
     const { x, z } = worldCenter();
     return this.standPosition(x, z);
   }
 
-  /** Pick a random safe surface spot — prefers team spawn pads. */
-  getRandomSpawnPosition(attempts = 32) {
+  sampleSurfaceSpawn() {
+    const margin = 3;
+    const x = margin + Math.random() * (WORLD_SIZE - margin * 2);
+    const z = margin + Math.random() * (WORLD_SIZE - margin * 2);
+    const pos = this.standPosition(x, z);
+    const bx = Math.floor(pos.x);
+    const by = Math.floor(pos.y);
+    const bz = Math.floor(pos.z);
+    if (isSolid(this.getBlock(bx, by, bz))) return null;
+    if (isSolid(this.getBlock(bx, by + 1, bz))) return null;
+    return { x: bx + 0.5, y: pos.y, z: bz + 0.5 };
+  }
+
+  /** Safe spawn pads, or random standable spots on maps without pads. */
+  listSpawnCandidates(extraSamples = 32) {
     if (!this.loaded) this.loadAll();
     const pads = this.terrain.spawns;
-    if (pads?.length) {
-      const pad = pads[(Math.random() * pads.length) | 0];
-      if (typeof pad.y === 'number') {
-        return { x: pad.x, y: pad.y, z: pad.z };
-      }
-      return this.standPosition(pad.x, pad.z);
+    if (pads?.length) return pads.map((pad) => this.spawnFromPad(pad));
+
+    const spots = [];
+    for (let i = 0; i < extraSamples * 2 && spots.length < extraSamples; i++) {
+      const spawn = this.sampleSurfaceSpawn();
+      if (spawn) spots.push(spawn);
     }
-    const margin = 3;
+    return spots.length ? spots : [this.getSpawnPosition()];
+  }
+
+  /** Pick a random safe surface spot — prefers team spawn pads. */
+  getRandomSpawnPosition(attempts = 32) {
+    const pads = this.terrain?.spawns;
+    if (pads?.length) {
+      return this.spawnFromPad(pads[(Math.random() * pads.length) | 0]);
+    }
+    if (!this.loaded) this.loadAll();
     for (let i = 0; i < attempts; i++) {
-      const x = margin + Math.random() * (WORLD_SIZE - margin * 2);
-      const z = margin + Math.random() * (WORLD_SIZE - margin * 2);
-      const pos = this.standPosition(x, z);
-      const bx = Math.floor(pos.x);
-      const by = Math.floor(pos.y);
-      const bz = Math.floor(pos.z);
-      if (isSolid(this.getBlock(bx, by, bz))) continue;
-      if (isSolid(this.getBlock(bx, by + 1, bz))) continue;
-      return { x: bx + 0.5, y: pos.y, z: bz + 0.5 };
+      const spawn = this.sampleSurfaceSpawn();
+      if (spawn) return spawn;
     }
     return this.getSpawnPosition();
+  }
+
+  /**
+   * Respawn as far as possible from living enemies (max distance to the nearest).
+   * @param {Array<{x?:number,y?:number,z?:number,position?:{x:number,y:number,z:number},dead?:boolean}>} enemies
+   */
+  getFarthestSpawnPosition(enemies = []) {
+    const threats = [];
+    for (const enemy of enemies) {
+      if (!enemy || enemy.dead) continue;
+      const p = enemy.position || enemy;
+      if (typeof p.x !== 'number' || typeof p.z !== 'number') continue;
+      threats.push(p);
+    }
+
+    const candidates = this.listSpawnCandidates(40);
+    if (!threats.length) {
+      return candidates[(Math.random() * candidates.length) | 0];
+    }
+
+    let best = candidates[0];
+    let bestScore = -1;
+    for (const spawn of candidates) {
+      let nearest = Infinity;
+      for (const t of threats) {
+        const dy = spawn.y - (typeof t.y === 'number' ? t.y : spawn.y);
+        const d = Math.hypot(spawn.x - t.x, dy, spawn.z - t.z);
+        if (d < nearest) nearest = d;
+      }
+      if (nearest > bestScore) {
+        bestScore = nearest;
+        best = spawn;
+      }
+    }
+    return best;
   }
 
   /** Keep the player inside the finite map. */

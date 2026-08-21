@@ -105,8 +105,8 @@ export class Bot {
     this.remote.setDead(true);
   }
 
-  respawn() {
-    const spawn = this.world.getRandomSpawnPosition();
+  respawn(enemies = []) {
+    const spawn = this.world.getFarthestSpawnPosition(enemies);
     this.position.x = spawn.x;
     this.position.y = spawn.y;
     this.position.z = spawn.z;
@@ -122,9 +122,9 @@ export class Bot {
     this.syncRemote(true);
   }
 
-  update(dt, player, weapons, audio) {
+  update(dt, player, weapons, audio, avoid = []) {
     if (this.dead) {
-      if (performance.now() >= this.respawnAt) this.respawn();
+      if (performance.now() >= this.respawnAt) this.respawn(avoid);
       return;
     }
 

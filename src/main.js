@@ -457,6 +457,15 @@ function interactShot() {
   }
 }
 
+function livingEnemies() {
+  if (solo.active) {
+    return solo.bots.filter((bot) => !bot.dead).map((bot) => bot.position);
+  }
+  return [...net.remotes.values()]
+    .filter((remote) => !remote.dead)
+    .map((remote) => ({ x: remote.x, y: remote.y, z: remote.z }));
+}
+
 function checkFallDeath() {
   if (!inSession() || player.dead) return;
   if (!player.fellOffMap) return;
@@ -479,7 +488,7 @@ function animate(now) {
   const sprint = controls.isDown('ShiftLeft') || controls.isDown('ShiftRight');
 
   if (player.dead) {
-    const left = player.updateRespawn(world);
+    const left = player.updateRespawn(world, livingEnemies());
     hud.setDeathBanner(left > 0 ? left : 0);
     if (player.dead) {
       player.updateMovement(controls, dt);
