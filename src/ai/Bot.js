@@ -4,6 +4,7 @@ import { applyPhysics } from '../player/Physics.js';
 import {
   EYE_HEIGHT,
   MAX_HEALTH,
+  PLAYER_HEIGHT,
   RESPAWN_DELAY_SEC,
   VOID_KILL_Y,
 } from '../player/PlayerDims.js';
@@ -167,12 +168,12 @@ export class Bot {
     this.yaw = lerpAngle(this.yaw, lookYaw, 1 - Math.exp(-dt * 10));
 
     const eye = this.eyePosition;
-    const targetEye = {
+    const chest = {
       x: player.position.x,
-      y: player.position.y + EYE_HEIGHT,
+      y: player.position.y + PLAYER_HEIGHT * 0.55,
       z: player.position.z,
     };
-    const dy = targetEye.y - eye.y;
+    const dy = chest.y - eye.y;
     const aimDist = Math.hypot(dx, dy, dz) || 1;
     this.pitch = Math.asin(Math.max(-0.9, Math.min(0.9, dy / aimDist)));
 
@@ -192,14 +193,14 @@ export class Bot {
     }
 
     if (player.dead) return;
-    const canSee = dist < SHOT_RANGE && hasLineOfSight(this.world, eye, targetEye);
+    const canSee = dist < SHOT_RANGE && hasLineOfSight(this.world, eye, chest);
     if (canSee && this.shotCooldown <= 0) {
-      const dir = {
-        x: (targetEye.x - eye.x) / aimDist,
-        y: (targetEye.y - eye.y) / aimDist,
-        z: (targetEye.z - eye.z) / aimDist,
-      };
-      weapons.spawnBotBullet(eye, dir, this.id, Mode.PISTOL);
+      const aim = pickShotTarget(this.world, eye, player);
+      const tx = aim.x - eye.x;
+      const ty = aim.y - eye.y;
+      const tz = aim.z - eye.z;
+      const len = Math.hypot(tx, ty, tz) || 1;
+      weapons.spawnBotBullet(eye, { x: tx / len, y: ty / len, z: tz / len }, this.id, Mode.PISTOL);
       audio?.playSpatialShot(player.position, eye, WEAPON_STATS[Mode.PISTOL]?.pitch ?? 1);
       this.shotCooldown = PISTOL_COOLDOWN + Math.random() * 0.06;
     }
@@ -276,6 +277,47 @@ function hasSupport(world, x, y, z) {
     if (isSolid(world.getBlock(bx, Math.floor(y) - dy, bz))) return true;
   }
   return false;
+}
+
+function pickShotTarget(world, from, player) {
+  for (let i = 0; i < 8; i++) {
+    const aim = randomBodyAim(player);
+    if (hasLineOfSight(world, from, aim)) return aim;
+  }
+  return {
+    x: player.position.x,
+    y: player.position.y + PLAYER_HEIGHT * 0.55,
+    z: player.position.z,
+  };
+}
+
+function randomBodyAim(player) {
+  const roll = Math.random();
+  let yOff;
+  let xOff = (Math.random() - 0.5) * 0.22;
+  let zOff = (Math.random() - 0.5) * 0.12;
+  if (roll < 0.1) {
+    yOff = PLAYER_HEIGHT * 0.88;
+    xOff *= 0.5;
+    zOff *= 0.5;
+  } else if (roll < 0.55) {
+    yOff = PLAYER_HEIGHT * (0.42 + Math.random() * 0.28);
+  } else if (roll < 0.78) {
+    yOff = PLAYER_HEIGHT * 0.58;
+    xOff = (Math.random() < 0.5 ? -1 : 1) * 0.36;
+  } else {
+    yOff = PLAYER_HEIGHT * (0.1 + Math.random() * 0.28);
+    xOff = (Math.random() < 0.5 ? -0.14 : 0.14);
+  }
+
+  const yaw = player.yaw || 0;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  return {
+    x: player.position.x + xOff * cos - zOff * sin,
+    y: player.position.y + yOff,
+    z: player.position.z + xOff * sin + zOff * cos,
+  };
 }
 
 function hasLineOfSight(world, from, to) {
