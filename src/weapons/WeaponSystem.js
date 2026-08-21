@@ -240,9 +240,11 @@ export class WeaponSystem {
     });
   }
 
-  spawnBotBullet(origin, direction, ownerId) {
-    const dir = spreadDirection(direction, 0.05);
-    this.spawnBullet(origin, dir, false, Mode.AK, { ownerId });
+  spawnBotBullet(origin, direction, ownerId, mode = Mode.PISTOL) {
+    const stats = WEAPON_STATS[mode] || {};
+    const spread = stats.spread ?? 0.02;
+    const dir = spreadDirection(direction, spread);
+    this.spawnBullet(origin, dir, false, mode, { ownerId });
   }
 
   updateBullets(dt) {

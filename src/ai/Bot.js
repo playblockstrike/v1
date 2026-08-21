@@ -8,13 +8,15 @@ import {
   VOID_KILL_Y,
 } from '../player/PlayerDims.js';
 import { castRay } from '../player/Raycast.js';
+import { Mode, WEAPON_STATS } from '../weapons/Modes.js';
 
 const GRAVITY = 28;
 const JUMP_VELOCITY = 9.5;
-const WALK_SPEED = 4.6;
-const STRAFE_SPEED = 2.4;
-const ENGAGE_RANGE = 38;
-const SHOT_RANGE = 32;
+const CHASE_SPEED = 6.5;
+const CLOSE_SPEED = 3.4;
+const FOLLOW_DISTANCE = 2.3;
+const SHOT_RANGE = 26;
+const PISTOL_COOLDOWN = WEAPON_STATS[Mode.PISTOL]?.cooldown ?? 0.22;
 
 export const BOT_COUNT = 1;
 export const BOT_NAMES = ['Rook', 'Viper', 'Ghost', 'Hawk'];
@@ -32,10 +34,11 @@ export class Bot {
     this.health = MAX_HEALTH;
     this.dead = false;
     this.respawnAt = 0;
-    this.shotCooldown = 0.4 + Math.random() * 0.8;
-    this.thinkT = 0;
-    this.strafe = Math.random() < 0.5 ? -1 : 1;
-    this.wanderYaw = this.yaw;
+    this.shotCooldown = 0.35 + Math.random() * 0.4;
+    this.stuckT = 0;
+    this.side = Math.random() < 0.5 ? -1 : 1;
+    this.lastX = spawn.x;
+    this.lastZ = spawn.z;
     this.remote = new RemotePlayer(
       scene,
       {
@@ -46,7 +49,8 @@ export class Bot {
         z: spawn.z,
         yaw: this.yaw,
       },
-      colorIndex
+      colorIndex,
+      { weapon: 'pistol' }
     );
   }
 
@@ -67,15 +71,6 @@ export class Bot {
       x: this.position.x,
       y: this.position.y + EYE_HEIGHT,
       z: this.position.z,
-    };
-  }
-
-  get direction() {
-    const cos = Math.cos(this.pitch);
-    return {
-      x: -Math.sin(this.yaw) * cos,
-      y: Math.sin(this.pitch),
-      z: -Math.cos(this.yaw) * cos,
     };
   }
 
@@ -120,7 +115,8 @@ export class Bot {
     this.health = MAX_HEALTH;
     this.dead = false;
     this.respawnAt = 0;
-    this.shotCooldown = 0.4 + Math.random() * 0.6;
+    this.shotCooldown = 0.3 + Math.random() * 0.4;
+    this.stuckT = 0;
     this.remote.setDead(false);
     this.syncRemote(true);
   }
@@ -132,36 +128,43 @@ export class Bot {
     }
 
     this.shotCooldown = Math.max(0, this.shotCooldown - dt);
-    this.thinkT -= dt;
-    if (this.thinkT <= 0) {
-      this.thinkT = 0.35 + Math.random() * 0.7;
-      this.strafe = Math.random() < 0.22 ? 0 : Math.random() < 0.5 ? -1 : 1;
-      this.wanderYaw += (Math.random() - 0.5) * 1.6;
-    }
 
-    const hunting = player && !player.dead;
-    if (hunting) this.hunt(dt, player, weapons, audio);
-    else this.wander(dt);
+    if (player) this.follow(dt, player, weapons, audio);
+    else {
+      this.velocity.x = 0;
+      this.velocity.z = 0;
+    }
 
     this.velocity.y -= GRAVITY * dt;
     applyPhysics(this, this.world, dt);
+
+    const moved = Math.hypot(this.position.x - this.lastX, this.position.z - this.lastZ);
+    this.lastX = this.position.x;
+    this.lastZ = this.position.z;
+    const wantMove = Math.hypot(this.velocity.x, this.velocity.z) > 1;
+    if (wantMove && moved < 0.04) this.stuckT += dt;
+    else this.stuckT = 0;
+    if (this.stuckT > 0.28) {
+      this.side *= -1;
+      this.stuckT = 0;
+      if (this.onGround) this.velocity.y = JUMP_VELOCITY;
+    }
 
     if (this.position.y < VOID_KILL_Y) {
       this.die();
       return 'void';
     }
 
-    this.tryJump();
     this.syncRemote();
     return null;
   }
 
-  hunt(dt, player, weapons, audio) {
+  follow(dt, player, weapons, audio) {
     const dx = player.position.x - this.position.x;
     const dz = player.position.z - this.position.z;
     const dist = Math.hypot(dx, dz);
-    const desiredYaw = Math.atan2(-dx, -dz);
-    this.yaw = lerpAngle(this.yaw, desiredYaw, 1 - Math.exp(-dt * 8));
+    const lookYaw = Math.atan2(-dx, -dz);
+    this.yaw = lerpAngle(this.yaw, lookYaw, 1 - Math.exp(-dt * 10));
 
     const eye = this.eyePosition;
     const targetEye = {
@@ -173,72 +176,33 @@ export class Bot {
     const aimDist = Math.hypot(dx, dy, dz) || 1;
     this.pitch = Math.asin(Math.max(-0.9, Math.min(0.9, dy / aimDist)));
 
-    const canSee = dist < ENGAGE_RANGE && hasLineOfSight(this.world, eye, targetEye);
-    let moveYaw = this.yaw;
-    if (dist < 5.5) moveYaw = this.yaw + Math.PI;
-    else if (!canSee) moveYaw = this.wanderYaw;
-
-    const speed = dist > 14 ? WALK_SPEED + 1.6 : WALK_SPEED;
-    const fwdX = -Math.sin(moveYaw);
-    const fwdZ = -Math.cos(moveYaw);
-    const rightX = Math.cos(moveYaw);
-    const rightZ = -Math.sin(moveYaw);
-    let mx = fwdX;
-    let mz = fwdZ;
-    if (canSee && dist < SHOT_RANGE) {
-      mx += rightX * this.strafe * 0.7;
-      mz += rightZ * this.strafe * 0.7;
-    }
-    const len = Math.hypot(mx, mz) || 1;
-    this.velocity.x = (mx / len) * speed;
-    this.velocity.z = (mz / len) * speed;
-
-    if (this.avoidLedge(fwdX, fwdZ)) {
-      this.velocity.x = rightX * this.strafe * STRAFE_SPEED;
-      this.velocity.z = rightZ * this.strafe * STRAFE_SPEED;
+    const steer = pickChaseSteer(this.world, this.position, player.position, this.side);
+    const close = dist <= FOLLOW_DISTANCE;
+    const speed = close ? CLOSE_SPEED : CHASE_SPEED;
+    if (close && dist < 1.35) {
+      this.velocity.x = -steer.fx * speed * 0.35;
+      this.velocity.z = -steer.fz * speed * 0.35;
+    } else {
+      this.velocity.x = steer.fx * speed;
+      this.velocity.z = steer.fz * speed;
     }
 
-    if (canSee && dist < SHOT_RANGE && this.shotCooldown <= 0) {
+    if (this.onGround && shouldJump(this.world, this.position, steer.fx, steer.fz, player.position)) {
+      this.velocity.y = JUMP_VELOCITY;
+    }
+
+    if (player.dead) return;
+    const canSee = dist < SHOT_RANGE && hasLineOfSight(this.world, eye, targetEye);
+    if (canSee && this.shotCooldown <= 0) {
       const dir = {
         x: (targetEye.x - eye.x) / aimDist,
         y: (targetEye.y - eye.y) / aimDist,
         z: (targetEye.z - eye.z) / aimDist,
       };
-      weapons.spawnBotBullet(eye, dir, this.id);
-      audio?.playSpatialShot(player.position, eye);
-      this.shotCooldown = 0.11 + Math.random() * 0.08;
+      weapons.spawnBotBullet(eye, dir, this.id, Mode.PISTOL);
+      audio?.playSpatialShot(player.position, eye, WEAPON_STATS[Mode.PISTOL]?.pitch ?? 1);
+      this.shotCooldown = PISTOL_COOLDOWN + Math.random() * 0.06;
     }
-  }
-
-  wander() {
-    this.yaw = lerpAngle(this.yaw, this.wanderYaw, 0.08);
-    const fwdX = -Math.sin(this.yaw);
-    const fwdZ = -Math.cos(this.yaw);
-    if (this.avoidLedge(fwdX, fwdZ)) {
-      this.wanderYaw += Math.PI * 0.5;
-      this.velocity.x = 0;
-      this.velocity.z = 0;
-      return;
-    }
-    this.velocity.x = fwdX * (WALK_SPEED * 0.7);
-    this.velocity.z = fwdZ * (WALK_SPEED * 0.7);
-    this.pitch *= 0.9;
-  }
-
-  avoidLedge(fwdX, fwdZ) {
-    const ax = this.position.x + fwdX * 1.15;
-    const az = this.position.z + fwdZ * 1.15;
-    return !hasSupport(this.world, ax, this.position.y, az);
-  }
-
-  tryJump() {
-    if (!this.onGround) return;
-    const fx = this.position.x - Math.sin(this.yaw) * 0.75;
-    const fz = this.position.z - Math.cos(this.yaw) * 0.75;
-    const blocked = isSolid(
-      this.world.getBlock(Math.floor(fx), Math.floor(this.position.y) + 1, Math.floor(fz))
-    );
-    if (blocked) this.velocity.y = JUMP_VELOCITY;
   }
 
   syncRemote(snap = false) {
@@ -260,6 +224,49 @@ export class Bot {
   dispose(scene) {
     this.remote.dispose(scene);
   }
+}
+
+function pickChaseSteer(world, pos, target, side) {
+  const dx = target.x - pos.x;
+  const dz = target.z - pos.z;
+  const baseYaw = Math.atan2(-dx, -dz);
+  const offsets = [0, 0.5 * side, -0.5 * side, 1.05 * side, -1.05 * side, 1.65 * side, -1.65 * side];
+  let best = null;
+  for (const off of offsets) {
+    const yaw = baseYaw + off;
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    const nx = pos.x + fx * 1.15;
+    const nz = pos.z + fz * 1.15;
+    if (!hasSupport(world, nx, pos.y, nz)) continue;
+    if (bodyBlocked(world, nx, pos.y, nz) && bodyBlocked(world, pos.x + fx * 0.7, pos.y, pos.z + fz * 0.7)) {
+      continue;
+    }
+    const remain = Math.hypot(target.x - nx, target.z - nz);
+    const turnPenalty = Math.abs(off) * 0.55;
+    const score = remain + turnPenalty;
+    if (!best || score < best.score) best = { fx, fz, score };
+  }
+  if (best) return best;
+  return { fx: -Math.sin(baseYaw), fz: -Math.cos(baseYaw), score: Math.hypot(dx, dz) };
+}
+
+function shouldJump(world, pos, fx, fz, target) {
+  const aheadX = pos.x + fx * 0.8;
+  const aheadZ = pos.z + fz * 0.8;
+  const foot = isSolid(world.getBlock(Math.floor(aheadX), Math.floor(pos.y), Math.floor(aheadZ)));
+  const body = isSolid(world.getBlock(Math.floor(aheadX), Math.floor(pos.y) + 1, Math.floor(aheadZ)));
+  const head = isSolid(world.getBlock(Math.floor(aheadX), Math.floor(pos.y) + 2, Math.floor(aheadZ)));
+  if ((foot || body) && !head) return true;
+  if (target.y - pos.y > 0.9 && Math.hypot(target.x - pos.x, target.z - pos.z) < 10) return true;
+  return false;
+}
+
+function bodyBlocked(world, x, y, z) {
+  const bx = Math.floor(x);
+  const by = Math.floor(y);
+  const bz = Math.floor(z);
+  return isSolid(world.getBlock(bx, by + 1, bz));
 }
 
 function hasSupport(world, x, y, z) {

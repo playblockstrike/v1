@@ -195,7 +195,7 @@ export class AudioSystem {
   }
 
   /** Quieter distance-based gunshot for bot firefights. */
-  playSpatialShot(listenerPos, shotPos) {
+  playSpatialShot(listenerPos, shotPos, rate = 1) {
     if (!this.started || !listenerPos || !shotPos) return;
     const dx = shotPos.x - listenerPos.x;
     const dy = shotPos.y - listenerPos.y;
@@ -203,7 +203,7 @@ export class AudioSystem {
     const dist = Math.hypot(dx, dy, dz);
     if (dist > 48) return;
     const volume = Math.max(0.06, 0.42 * (1 - dist / 48));
-    this.playShot(volume);
+    this.playShot(volume, rate);
   }
 
   playHit(volume = 0.35) {

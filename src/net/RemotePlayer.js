@@ -66,8 +66,30 @@ export function createRemoteMesh(color) {
   return group;
 }
 
+function createPistolMesh() {
+  const group = new THREE.Group();
+  const metal = makeMat(0x2a2a2a);
+  const dark = makeMat(0x1a1a1a);
+  const wood = makeMat(0x3d2b1f);
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.22), metal);
+  body.position.set(0, 0.02, -0.04);
+  group.add(body);
+
+  const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.18), dark);
+  barrel.position.set(0, 0.03, -0.2);
+  group.add(barrel);
+
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.12, 0.08), wood);
+  grip.position.set(0, -0.07, 0.04);
+  grip.rotation.x = 0.28;
+  group.add(grip);
+
+  return group;
+}
+
 export class RemotePlayer {
-  constructor(scene, data, colorIndex = 0) {
+  constructor(scene, data, colorIndex = 0, { weapon = null } = {}) {
     this.id = data.id;
     this.name = data.name || `Player${data.id}`;
     this.x = data.x ?? 0;
@@ -81,8 +103,16 @@ export class RemotePlayer {
     this.tyaw = this.yaw;
     this.anim = Math.random() * 10;
     this.dead = !!data.dead;
+    this.weapon = weapon;
 
     this.mesh = createRemoteMesh(COLORS[colorIndex % COLORS.length]);
+    if (weapon === 'pistol') {
+      const pistol = createPistolMesh();
+      pistol.position.set(0.02, -0.18, -0.16);
+      pistol.rotation.set(-0.35, 0, 0);
+      this.mesh.userData.armR.add(pistol);
+      this.mesh.userData.pistol = pistol;
+    }
     scene.add(this.mesh);
 
     this.label = document.createElement('div');
@@ -140,13 +170,21 @@ export class RemotePlayer {
     this.mesh.rotation.y = this.yaw;
 
     const moving = Math.hypot(this.x - prevX, this.z - prevZ) > 0.002;
+    const pistol = this.weapon === 'pistol';
     if (moving) {
       this.anim += dt * 10;
       const swing = Math.sin(this.anim) * 0.5;
       this.mesh.userData.legL.rotation.x = swing;
       this.mesh.userData.legR.rotation.x = -swing;
       this.mesh.userData.armL.rotation.x = -swing * 0.5;
-      this.mesh.userData.armR.rotation.x = swing * 0.5;
+      if (!pistol) this.mesh.userData.armR.rotation.x = swing * 0.5;
+    } else {
+      this.mesh.userData.legL.rotation.x *= 0.8;
+      this.mesh.userData.legR.rotation.x *= 0.8;
+      this.mesh.userData.armL.rotation.x *= 0.8;
+    }
+    if (pistol) {
+      this.mesh.userData.armR.rotation.x = -this.pitch * 0.9 - 0.35;
     }
 
     this.updateLabel(camera, renderer);
