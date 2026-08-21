@@ -266,7 +266,7 @@ weapons.onHitPlayer = (targetId, damage, part) => {
 weapons.onHitLocal = (damage, part, byId) => {
   if (!solo.active || player.dead) return;
   audio.playHit(part === 'head' ? 0.6 : 0.5);
-  const killed = player.takeDamage(damage ?? damageForPart(part));
+  const killed = player.takeDamage((damage ?? damageForPart(part)) * 0.5);
   if (killed) solo.noteLocalDeath(byId);
 };
 
