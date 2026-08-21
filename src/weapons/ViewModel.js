@@ -253,7 +253,7 @@ export class ViewModel {
     }, 55);
   }
 
-  update(dt, moving) {
+  update(dt, moving, reloading = false) {
     this.bob += dt * (moving ? 10 : 2);
     this.recoil = Math.max(0, this.recoil - dt * 8);
     this.swing = Math.max(0, this.swing - dt * 4.2);
@@ -267,6 +267,11 @@ export class ViewModel {
     }
 
     const kick = this.recoil * 0.08;
+    if (reloading) {
+      this.root.position.set(0.26 + bobX, -0.46 + bobY, -0.36);
+      this.root.rotation.set(0.72, -0.18, 0.32);
+      return;
+    }
     this.root.position.set(0.32 + bobX, -0.28 + bobY + kick * 0.3, -0.45 + kick);
     this.root.rotation.set(-kick * 0.4, 0, 0);
     this.constructorTool.rotation.set(0, 0, 0);

@@ -1,4 +1,3 @@
-import { isSolid } from '../blocks/BlockTypes.js';
 import {
   EYE_HEIGHT,
   MAX_HEALTH,
@@ -7,9 +6,11 @@ import {
   PLAYER_WIDTH,
   RESPAWN_DELAY_SEC,
   SHOT_DAMAGE,
+  VOID_KILL_Y,
   damageForPart,
   playerAabb,
 } from './PlayerDims.js';
+import { applyPhysics } from './Physics.js';
 
 const GRAVITY = 28;
 const JUMP_VELOCITY = 9.5;
@@ -23,6 +24,7 @@ export {
   PLAYER_HEIGHT,
   PLAYER_WIDTH,
   RESPAWN_DELAY_SEC,
+  VOID_KILL_Y,
   SHOT_DAMAGE,
   damageForPart,
   playerAabb,
@@ -125,74 +127,19 @@ export class Player {
   }
 
   applyPhysics(world, dt) {
-    this.position.x += this.velocity.x * dt;
-    this.resolveCollision(world, 'x');
-
-    this.position.y += this.velocity.y * dt;
-    this.onGround = false;
-    this.resolveCollision(world, 'y');
-
-    this.position.z += this.velocity.z * dt;
-    this.resolveCollision(world, 'z');
-
-    world.clampPosition?.(this.position, PLAYER_HALF_WIDTH);
-
-    if (this.onGround) {
-      this.velocity.y = Math.min(this.velocity.y, 0);
-    }
+    applyPhysics(this, world, dt);
   }
 
-  resolveCollision(world, axis) {
-    const hw = PLAYER_HALF_WIDTH;
-    const minX = Math.floor(this.position.x - hw);
-    const maxX = Math.floor(this.position.x + hw - 0.001);
-    const minY = Math.floor(this.position.y);
-    const maxY = Math.floor(this.position.y + PLAYER_HEIGHT - 0.001);
-    const minZ = Math.floor(this.position.z - hw);
-    const maxZ = Math.floor(this.position.z + hw - 0.001);
+  /** Keep falling if pointer lock is released mid-air. */
+  coast(world, dt) {
+    this.velocity.x *= 0.94;
+    this.velocity.z *= 0.94;
+    this.velocity.y -= GRAVITY * dt;
+    applyPhysics(this, world, dt);
+  }
 
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        for (let z = minZ; z <= maxZ; z++) {
-          if (!isSolid(world.getBlock(x, y, z))) continue;
-
-          if (axis === 'x') {
-            if (this.velocity.x > 0) this.position.x = x - hw;
-            else if (this.velocity.x < 0) this.position.x = x + 1 + hw;
-            else {
-              // Resolve static overlap (e.g. after spawn / shove).
-              const cx = this.position.x;
-              this.position.x = cx < x + 0.5 ? x - hw : x + 1 + hw;
-            }
-            this.velocity.x = 0;
-          } else if (axis === 'y') {
-            if (this.velocity.y > 0) {
-              this.position.y = y - PLAYER_HEIGHT;
-            } else if (this.velocity.y < 0) {
-              this.position.y = y + 1;
-              this.onGround = true;
-            } else {
-              const cy = this.position.y + PLAYER_HEIGHT * 0.5;
-              if (cy < y + 0.5) {
-                this.position.y = y - PLAYER_HEIGHT;
-              } else {
-                this.position.y = y + 1;
-                this.onGround = true;
-              }
-            }
-            this.velocity.y = 0;
-          } else if (axis === 'z') {
-            if (this.velocity.z > 0) this.position.z = z - hw;
-            else if (this.velocity.z < 0) this.position.z = z + 1 + hw;
-            else {
-              const cz = this.position.z;
-              this.position.z = cz < z + 0.5 ? z - hw : z + 1 + hw;
-            }
-            this.velocity.z = 0;
-          }
-        }
-      }
-    }
+  get fellOffMap() {
+    return this.position.y < VOID_KILL_Y;
   }
 
   takeDamage(amount = SHOT_DAMAGE) {

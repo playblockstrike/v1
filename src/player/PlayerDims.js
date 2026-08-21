@@ -8,6 +8,8 @@ export const MAX_HEALTH = 100;
 /** Fallback if a hit arrives without a part. */
 export const SHOT_DAMAGE = 40;
 export const RESPAWN_DELAY_SEC = 3;
+/** Die and respawn after falling this far below the world. */
+export const VOID_KILL_Y = -6;
 
 export const HitPart = {
   HEAD: 'head',

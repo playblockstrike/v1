@@ -66,6 +66,8 @@ canvas {
 .host-row {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-bottom: 1.25rem;
 }
 
@@ -112,6 +114,7 @@ canvas {
 
 .play-button,
 .host-button,
+.solo-button,
 .join-button,
 .leave-button {
   padding: 0.75rem 1.25rem;
@@ -127,8 +130,18 @@ canvas {
 
 .play-button:hover,
 .host-button:hover,
+.solo-button:hover,
 .join-button:hover:not(:disabled) {
   background: #5a9438;
+}
+
+.solo-button {
+  background: #2f5a7c;
+  border-color: #5aa0c8;
+}
+
+.solo-button:hover {
+  background: #3872a0;
 }
 
 .join-button:disabled {

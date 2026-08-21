@@ -16,6 +16,7 @@ import { Network } from './net/Network.js';
 import { Lobby } from './net/Lobby.js';
 import { WORLD_SEED } from './net/protocol.js';
 import { DEFAULT_MAP_ID, mapName } from './world/maps.js';
+import { SoloMatch } from './ai/SoloMatch.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -41,6 +42,7 @@ const world = new World(scene, WORLD_SEED);
 const player = new Player(camera);
 const controls = new Controls(renderer.domElement);
 const weapons = new WeaponSystem(scene, camera, world, audio);
+const solo = new SoloMatch({ scene, world, audio, weapons });
 
 const hotbar = new Hotbar();
 const settings = new SettingsPanel();
@@ -54,7 +56,7 @@ let net;
 let lobby;
 
 async function requestPlay() {
-  if (!net?.connected) return;
+  if (!inSession()) return;
   if (player.dead) return;
   if (controls.locked) return;
   await audio.ensureStarted();
@@ -62,9 +64,14 @@ async function requestPlay() {
   controls.requestLock();
 }
 
+function inSession() {
+  return !!(net?.connected || solo?.active);
+}
+
 function resetLocalWorld(mapId = world.mapId || DEFAULT_MAP_ID) {
   world.setMap(mapId, WORLD_SEED);
   player.resetCombat();
+  weapons.refillMags();
   const spawn = world.getRandomSpawnPosition();
   player.position.x = spawn.x;
   player.position.y = spawn.y;
@@ -75,13 +82,14 @@ function resetLocalWorld(mapId = world.mapId || DEFAULT_MAP_ID) {
 }
 
 function returnToLobby() {
+  solo.stop();
   lobby.stopHosting();
   net.leaveMatch();
   resetLocalWorld();
   hud.setInSession(false);
   hud.setScoreboardVisible(false);
   hud.setScoreboard([]);
-  hud.setNetStatus('Ready — host or join a match');
+  hud.setNetStatus('Ready — play solo, host, or join a match');
 }
 
 net = new Network({
@@ -130,8 +138,21 @@ lobby = new Lobby({
 
 hud = new HUD({
   onPlay: requestPlay,
+  onSolo: (playerName, mapId) => {
+    const selectedMap = mapId || DEFAULT_MAP_ID;
+    if (net.connected) {
+      lobby.stopHosting();
+      net.leaveMatch();
+    }
+    resetLocalWorld(selectedMap);
+    solo.start(playerName, player.position);
+    hud.setInSession(true, { role: 'solo', mapId: selectedMap });
+    hud.setNetStatus(`Solo · 5 players · ${playerName}`);
+    hud.setScoreboard(solo.scoreboard.list(), solo.localId);
+  },
   onHost: async (playerName, mapId) => {
     try {
+      solo.stop();
       const selectedMap = mapId || DEFAULT_MAP_ID;
       resetLocalWorld(selectedMap);
       const session = await net.host(playerName, selectedMap);
@@ -153,6 +174,7 @@ hud = new HUD({
   },
   onJoin: async (session, playerName) => {
     try {
+      solo.stop();
       resetLocalWorld(session.mapId || DEFAULT_MAP_ID);
       await net.join(session, playerName);
       hud.setInSession(true, {
@@ -172,6 +194,11 @@ hud = new HUD({
   },
 });
 
+solo.scoreboard.onChange = (list) => {
+  if (!solo.active) return;
+  hud.setScoreboard(list, solo.localId);
+};
+
 lobby.connect();
 
 player.onHealthChange = (hp, max) => hud.setHealth(hp, max);
@@ -182,8 +209,9 @@ player.onDeath = () => {
 player.onRespawn = () => {
   hud.setDeathBanner(0);
   hud.setHealth(player.health, MAX_HEALTH);
+  weapons.refillMags();
   // Resume play immediately — no second "Click to play"
-  if (!controls.locked && net.connected) {
+  if (!controls.locked && inSession()) {
     requestPlay();
   }
 };
@@ -205,8 +233,9 @@ weapons.onBlockChange = (x, y, z, id) => {
   net.sendBlock(x, y, z, id);
 };
 
-weapons.getTargets = () =>
-  [...net.remotes.values()].map((r) => ({
+weapons.getTargets = () => {
+  if (solo.active) return solo.targets;
+  return [...net.remotes.values()].map((r) => ({
     id: r.id,
     x: r.x,
     y: r.y,
@@ -214,6 +243,7 @@ weapons.getTargets = () =>
     yaw: r.yaw,
     dead: r.dead,
   }));
+};
 
 weapons.getLocalTarget = () => ({
   x: player.position.x,
@@ -224,8 +254,20 @@ weapons.getLocalTarget = () => ({
 });
 
 weapons.onHitPlayer = (targetId, damage, part) => {
+  if (solo.active) {
+    const killed = solo.hitBot(targetId, damage);
+    hud.showHitMarker({ headshot: part === 'head', kill: killed });
+    return;
+  }
   net.sendHit(targetId, damage ?? damageForPart(part), part);
   hud.showHitMarker({ headshot: part === 'head' });
+};
+
+weapons.onHitLocal = (damage, part, byId) => {
+  if (!solo.active || player.dead) return;
+  audio.playHit(part === 'head' ? 0.6 : 0.5);
+  const killed = player.takeDamage(damage ?? damageForPart(part));
+  if (killed) solo.noteLocalDeath(byId);
 };
 
 function applyModeUI() {
@@ -254,13 +296,13 @@ function onResize() {
 window.addEventListener('resize', onResize);
 
 renderer.domElement.addEventListener('click', () => {
-  if (net.connected) requestPlay();
+  if (inSession()) requestPlay();
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Tab') {
     e.preventDefault();
-    if (net.connected) hud.setScoreboardVisible(true);
+    if (inSession()) hud.setScoreboardVisible(true);
     return;
   }
   if (!controls.locked) return;
@@ -269,6 +311,10 @@ document.addEventListener('keydown', (e) => {
     audio.playModeSwitch();
     applyModeUI();
     highlight.visible = false;
+    return;
+  }
+  if (e.code === 'KeyR' && weapons.mode === Mode.AK && !player.dead) {
+    weapons.startReload();
     return;
   }
   if (weapons.mode === Mode.CONSTRUCTOR) {
@@ -411,6 +457,14 @@ function interactShot() {
   }
 }
 
+function checkFallDeath() {
+  if (!inSession() || player.dead) return;
+  if (!player.fellOffMap) return;
+  player.die();
+  if (solo.active) solo.noteLocalDeath(null);
+  else net.sendKill(null);
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
   const dt = Math.min((now - lastTime) / 1000, 0.05);
@@ -447,7 +501,12 @@ function animate(now) {
       sprint,
       blockId: groundBlockId(),
     });
+  } else if (inSession() && !player.onGround) {
+    player.coast(world, dt);
   }
+
+  checkFallDeath();
+  if (solo.active) solo.update(dt, player, camera, renderer);
 
   net.sendState(player, weapons.mode);
   net.update(dt, camera, renderer);

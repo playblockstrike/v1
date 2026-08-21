@@ -213,6 +213,14 @@ export class AudioSystem {
     this.tone(now, 'square', 180, 0.05, volume * 0.4);
   }
 
+  playReload() {
+    if (!this.started) return;
+    const now = this.ctx.currentTime;
+    this.tone(now, 'square', 160, 0.07, 0.12);
+    this.noiseBurst(now + 0.05, 0.08, 0.12, 1400, 0.6);
+    this.tone(now + 0.18, 'triangle', 90, 0.1, 0.1);
+  }
+
   playSpatialHit(listenerPos, hitPos) {
     if (!this.started || !listenerPos || !hitPos) return;
     const dist = Math.hypot(

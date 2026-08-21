@@ -5,9 +5,10 @@ import { MAX_NAME_LEN, MAX_PLAYERS } from '../net/protocol.js';
 import { DEFAULT_MAP_ID, mapList, mapName } from '../world/maps.js';
 
 export class HUD {
-  constructor({ onPlay, onHost, onJoin, onLeave } = {}) {
+  constructor({ onPlay, onHost, onSolo, onJoin, onLeave } = {}) {
     this.onPlay = onPlay || (() => {});
     this.onHost = onHost || (() => {});
+    this.onSolo = onSolo || (() => {});
     this.onJoin = onJoin || (() => {});
     this.onLeave = onLeave || (() => {});
     this.inSession = false;
@@ -17,7 +18,7 @@ export class HUD {
     this.overlay.id = 'overlay';
     this.overlay.innerHTML = `
       <h1>Blockstrike</h1>
-      <p class="tagline">Host a match in your browser — anyone can join</p>
+      <p class="tagline">Play solo vs bots, or host a match anyone can join</p>
 
       <div id="lobby-panel" class="lobby-panel">
         <label class="name-row" for="player-name">
@@ -37,6 +38,7 @@ export class HUD {
         </label>
 
         <div class="host-row">
+          <button type="button" class="play-button solo-button">Play solo</button>
           <button type="button" class="play-button host-button">Host match</button>
         </div>
 
@@ -52,7 +54,7 @@ export class HUD {
         <button type="button" class="play-button">Click to play</button>
         <button type="button" class="leave-button">Leave match</button>
         <p class="controls-hint">
-          1–4 switch tools · Constructor: scroll materials · Guns: LMB fire · Sniper: RMB scope · Tab scoreboard
+          1–4 switch tools · Constructor: scroll materials · Guns: LMB fire · AK: R reload · Sniper: RMB scope · Tab scoreboard
         </p>
       </div>
     `;
@@ -66,6 +68,7 @@ export class HUD {
     this.sessionLabel = this.overlay.querySelector('#session-label');
     this.playButton = this.overlay.querySelector('.play-panel .play-button');
     this.hostButton = this.overlay.querySelector('.host-button');
+    this.soloButton = this.overlay.querySelector('.solo-button');
     this.leaveButton = this.overlay.querySelector('.leave-button');
 
     this.playerNameInput.value = gameConfig.playerName;
@@ -86,6 +89,11 @@ export class HUD {
     this.hostButton.addEventListener('click', (event) => {
       event.stopPropagation();
       this.onHost(this.getPlayerName(), this.getSelectedMap());
+    });
+
+    this.soloButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.onSolo(this.getPlayerName(), this.getSelectedMap());
     });
 
     this.playButton.addEventListener('click', (event) => {
@@ -287,11 +295,18 @@ export class HUD {
     this.lobbyPanel.classList.toggle('hidden', inSession);
     this.playPanel.classList.toggle('hidden', !inSession);
     if (inSession) {
-      const roleLabel = role === 'host' ? 'Hosting' : 'Joined';
-      const id = shortSessionId(sessionId);
+      let roleLabel = 'Joined';
+      if (role === 'host') roleLabel = 'Hosting';
+      else if (role === 'solo') roleLabel = 'Solo';
       const map = mapName(mapId);
-      this.sessionLabel.textContent = `${roleLabel} · ${map} · ${id}`;
-      this.sessionLabel.title = sessionId || '';
+      if (role === 'solo') {
+        this.sessionLabel.textContent = `${roleLabel} · ${map} · 4 bots`;
+        this.sessionLabel.title = '';
+      } else {
+        const id = shortSessionId(sessionId);
+        this.sessionLabel.textContent = `${roleLabel} · ${map} · ${id}`;
+        this.sessionLabel.title = sessionId || '';
+      }
     } else {
       this.setScoreboardVisible(false);
     }

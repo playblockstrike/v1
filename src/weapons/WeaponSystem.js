@@ -36,6 +36,8 @@ export class WeaponSystem {
     this.getLocalTarget = null;
     /** @type {null | ((targetId: string, damage: number, part: string) => void)} */
     this.onHitPlayer = null;
+    /** @type {null | ((damage: number, part: string, ownerId: string) => void)} */
+    this.onHitLocal = null;
   }
 
   get mode() {
@@ -95,12 +97,24 @@ export class WeaponSystem {
 
   startReload(mode = this.mode) {
     const stats = WEAPON_STATS[mode];
-    if (!stats?.magSize || !stats.reloadTime) return;
-    if (this.isReloading) return;
-    if (this.ammoFor(mode) >= stats.magSize) return;
+    if (!stats?.magSize || !stats.reloadTime) return false;
+    if (this.isReloading) return false;
+    if (this.ammoFor(mode) >= stats.magSize) return false;
     this.reloadMode = mode;
     this.reloadDuration = stats.reloadTime;
     this.reloadT = stats.reloadTime;
+    this.audio?.playReload?.();
+    return true;
+  }
+
+  refillMags() {
+    this.reloadT = 0;
+    this.reloadDuration = 0;
+    this.reloadMode = null;
+    for (const mode of Object.keys(WEAPON_STATS)) {
+      const size = WEAPON_STATS[mode]?.magSize;
+      if (size) this.ammo[mode] = size;
+    }
   }
 
   finishReload() {
@@ -152,7 +166,7 @@ export class WeaponSystem {
       this.tryShoot(player);
     }
     this.syncAim(dt);
-    this.viewModel.update(dt, playerMoving);
+    this.viewModel.update(dt, playerMoving, this.isReloading && this.mode === Mode.AK);
     this.updateBullets(dt);
   }
 
@@ -202,7 +216,7 @@ export class WeaponSystem {
     this.viewModel.setScoped(this.isScoped);
   }
 
-  spawnBullet(origin, direction, local = true, mode = null) {
+  spawnBullet(origin, direction, local = true, mode = null, extra = {}) {
     const speed = WEAPON_STATS[mode]?.bulletSpeed || BULLET_SPEED;
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 8, 8),
@@ -222,7 +236,13 @@ export class WeaponSystem {
       age: 0,
       local,
       mode,
+      ownerId: extra.ownerId || null,
     });
+  }
+
+  spawnBotBullet(origin, direction, ownerId) {
+    const dir = spreadDirection(direction, 0.05);
+    this.spawnBullet(origin, dir, false, Mode.AK, { ownerId });
   }
 
   updateBullets(dt) {
@@ -261,6 +281,9 @@ export class WeaponSystem {
         if (bullet.local && playerHit.id) {
           const damage = weaponDamage(bullet.mode, playerHit.part, playerHit.damage);
           this.onHitPlayer?.(playerHit.id, damage, playerHit.part);
+        } else if (!bullet.local && bullet.ownerId) {
+          const damage = weaponDamage(bullet.mode, playerHit.part, playerHit.damage);
+          this.onHitLocal?.(damage, playerHit.part, bullet.ownerId);
         }
         this.spawnImpact(playerHit.x, playerHit.y, playerHit.z, playerHit.part);
         if (bullet.local) this.audio?.playHit?.(playerHit.part === 'head' ? 0.55 : 0.35);
