@@ -50,9 +50,9 @@ export class Bot {
         z: spawn.z,
         yaw: this.yaw,
       },
-      colorIndex,
-      { weapon: 'pistol' }
+      colorIndex
     );
+    this.remote.setHeld(Mode.PISTOL);
   }
 
   get x() {
@@ -195,13 +195,20 @@ export class Bot {
     if (player.dead) return;
     const canSee = dist < SHOT_RANGE && hasLineOfSight(this.world, eye, chest);
     if (canSee && this.shotCooldown <= 0) {
-      const aim = pickShotTarget(this.world, eye, player);
-      const tx = aim.x - eye.x;
-      const ty = aim.y - eye.y;
-      const tz = aim.z - eye.z;
+      this.remote.x = this.position.x;
+      this.remote.y = this.position.y;
+      this.remote.z = this.position.z;
+      this.remote.yaw = this.yaw;
+      this.remote.pitch = this.pitch;
+      const muzzle = this.remote.getMuzzlePosition();
+      const aim = pickShotTarget(this.world, muzzle, player);
+      const tx = aim.x - muzzle.x;
+      const ty = aim.y - muzzle.y;
+      const tz = aim.z - muzzle.z;
       const len = Math.hypot(tx, ty, tz) || 1;
-      weapons.spawnBotBullet(eye, { x: tx / len, y: ty / len, z: tz / len }, this.id, Mode.PISTOL);
-      audio?.playSpatialShot(player.position, eye, WEAPON_STATS[Mode.PISTOL]?.pitch ?? 1);
+      weapons.spawnBotBullet(muzzle, { x: tx / len, y: ty / len, z: tz / len }, this.id, Mode.PISTOL);
+      this.remote.flashMuzzle();
+      audio?.playSpatialShot(player.position, muzzle, WEAPON_STATS[Mode.PISTOL]?.pitch ?? 1);
       this.shotCooldown = PISTOL_COOLDOWN + Math.random() * 0.06;
     }
   }

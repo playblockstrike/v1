@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import {
+  EYE_HEIGHT,
   PLAYER_HEIGHT,
   PLAYER_WIDTH,
   playerAabb,
 } from '../player/PlayerDims.js';
+import { Mode, isGunMode } from '../weapons/Modes.js';
 
 const COLORS = [
   0xc53030, 0x2b6cb0, 0x2f855a, 0xb7791f, 0x6b46c1, 0xdd6b20,
@@ -11,8 +13,22 @@ const COLORS = [
   0x805ad5, 0xe53e3e, 0x2c7a7b, 0xd69e2e,
 ];
 
+const _muzzleWorld = new THREE.Vector3();
+
 function makeMat(color) {
   return new THREE.MeshLambertMaterial({ color });
+}
+
+function box(w, h, d, color, x = 0, y = 0, z = 0) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), makeMat(color));
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+function muzzleMarker(x, y, z) {
+  const mark = new THREE.Object3D();
+  mark.position.set(x, y, z);
+  return mark;
 }
 
 /** Visual body sized to match PLAYER_WIDTH × PLAYER_HEIGHT hitbox. */
@@ -68,23 +84,63 @@ export function createRemoteMesh(color) {
 
 function createPistolMesh() {
   const group = new THREE.Group();
-  const metal = makeMat(0x2a2a2a);
-  const dark = makeMat(0x1a1a1a);
-  const wood = makeMat(0x3d2b1f);
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.22), metal);
-  body.position.set(0, 0.02, -0.04);
-  group.add(body);
-
-  const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.18), dark);
-  barrel.position.set(0, 0.03, -0.2);
-  group.add(barrel);
-
-  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.12, 0.08), wood);
-  grip.position.set(0, -0.07, 0.04);
+  group.add(box(0.08, 0.1, 0.24, 0x2a2a2a, 0, 0.02, -0.04));
+  group.add(box(0.04, 0.04, 0.2, 0x1a1a1a, 0, 0.035, -0.22));
+  const grip = box(0.06, 0.13, 0.09, 0x3d2b1f, 0, -0.07, 0.05);
   grip.rotation.x = 0.28;
   group.add(grip);
+  group.add(box(0.02, 0.04, 0.02, 0x888888, 0, 0.09, -0.1));
+  group.userData.muzzle = muzzleMarker(0, 0.035, -0.34);
+  group.add(group.userData.muzzle);
+  return group;
+}
 
+function createAkMesh() {
+  const group = new THREE.Group();
+  group.add(box(0.075, 0.085, 0.34, 0x3a3a3a, 0, 0.02, -0.06));
+  group.add(box(0.078, 0.055, 0.2, 0x6b4423, 0, 0.012, -0.28));
+  group.add(box(0.026, 0.026, 0.42, 0x1a1a1a, 0, 0.04, -0.5));
+  group.add(box(0.038, 0.038, 0.06, 0x2c2c2c, 0, 0.04, -0.72));
+  group.add(box(0.024, 0.05, 0.02, 0x222222, 0, 0.08, -0.66));
+  const mag = box(0.045, 0.18, 0.09, 0x242424, 0, -0.1, 0.0);
+  mag.rotation.x = 0.28;
+  group.add(mag);
+  const grip = box(0.05, 0.13, 0.07, 0x4a3218, 0, -0.07, 0.12);
+  grip.rotation.x = 0.38;
+  group.add(grip);
+  group.add(box(0.06, 0.075, 0.2, 0x6b4423, 0, 0.0, 0.26));
+  group.userData.muzzle = muzzleMarker(0, 0.04, -0.76);
+  group.add(group.userData.muzzle);
+  return group;
+}
+
+function createSniperMesh() {
+  const group = new THREE.Group();
+  group.add(box(0.06, 0.07, 0.42, 0x1a1a1a, 0, 0.02, -0.08));
+  group.add(box(0.024, 0.024, 0.55, 0x111111, 0, 0.035, -0.5));
+  group.add(box(0.034, 0.034, 0.08, 0x2a2a2a, 0, 0.035, -0.8));
+  group.add(box(0.055, 0.085, 0.22, 0x3a2918, 0, -0.01, 0.22));
+  group.add(box(0.04, 0.12, 0.07, 0x2c2c2c, 0, -0.07, 0.02));
+  const grip = box(0.045, 0.12, 0.065, 0x242424, 0, -0.07, 0.1);
+  grip.rotation.x = 0.32;
+  group.add(grip);
+  group.add(box(0.048, 0.048, 0.24, 0x2b2b2b, 0, 0.1, -0.14));
+  group.add(box(0.056, 0.056, 0.03, 0x3a3a3a, 0, 0.1, -0.28));
+  group.add(box(0.04, 0.04, 0.014, 0x1a4a22, 0, 0.1, -0.3));
+  group.userData.muzzle = muzzleMarker(0, 0.035, -0.86);
+  group.add(group.userData.muzzle);
+  return group;
+}
+
+function createHammerMesh() {
+  const group = new THREE.Group();
+  group.add(box(0.045, 0.045, 0.38, 0x8b5a2b, 0, 0, -0.04));
+  group.add(box(0.05, 0.05, 0.1, 0x5a3818, 0, 0, 0.12));
+  group.add(box(0.2, 0.08, 0.08, 0x8d8d8d, 0, 0.02, -0.28));
+  group.add(box(0.06, 0.1, 0.1, 0xa0a0a0, -0.09, 0.02, -0.28));
+  group.add(box(0.08, 0.035, 0.1, 0x6f6f6f, 0.1, 0.04, -0.28));
+  group.userData.muzzle = muzzleMarker(0, 0.02, -0.34);
+  group.add(group.userData.muzzle);
   return group;
 }
 
@@ -103,16 +159,12 @@ export class RemotePlayer {
     this.tyaw = this.yaw;
     this.anim = Math.random() * 10;
     this.dead = !!data.dead;
-    this.weapon = weapon;
+    this.weapon = null;
+    this.activeMuzzle = null;
 
     this.mesh = createRemoteMesh(COLORS[colorIndex % COLORS.length]);
-    if (weapon === 'pistol') {
-      const pistol = createPistolMesh();
-      pistol.position.set(0.02, -0.18, -0.16);
-      pistol.rotation.set(-0.35, 0, 0);
-      this.mesh.userData.armR.add(pistol);
-      this.mesh.userData.pistol = pistol;
-    }
+    this.attachHeldItems();
+    this.setHeld(weapon || data.mode || Mode.CONSTRUCTOR);
     scene.add(this.mesh);
 
     this.label = document.createElement('div');
@@ -121,6 +173,88 @@ export class RemotePlayer {
     document.body.appendChild(this.label);
 
     this.setDead(this.dead);
+  }
+
+  attachHeldItems() {
+    const armR = this.mesh.userData.armR;
+    const root = new THREE.Group();
+    root.position.set(0.05, -0.22, -0.1);
+    root.rotation.set(-0.2, 0, 0.08);
+    armR.add(root);
+
+    this.pistol = createPistolMesh();
+    this.ak = createAkMesh();
+    this.sniper = createSniperMesh();
+    this.hammer = createHammerMesh();
+    root.add(this.pistol, this.ak, this.sniper, this.hammer);
+
+    this.muzzleFlash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffcc44 })
+    );
+    this.muzzleFlash.visible = false;
+    this.muzzleFlash.frustumCulled = false;
+    root.add(this.muzzleFlash);
+
+    this.mesh.userData.heldRoot = root;
+  }
+
+  setHeld(mode) {
+    const next = mode || Mode.CONSTRUCTOR;
+    this.weapon = next;
+    this.pistol.visible = next === Mode.PISTOL;
+    this.ak.visible = next === Mode.AK;
+    this.sniper.visible = next === Mode.SNIPER;
+    this.hammer.visible = next === Mode.CONSTRUCTOR;
+    this.activeMuzzle =
+      next === Mode.AK
+        ? this.ak.userData.muzzle
+        : next === Mode.SNIPER
+          ? this.sniper.userData.muzzle
+          : next === Mode.PISTOL
+            ? this.pistol.userData.muzzle
+            : this.hammer.userData.muzzle;
+    if (this.activeMuzzle) this.activeMuzzle.add(this.muzzleFlash);
+    this.aimRightArm();
+  }
+
+  aimRightArm() {
+    const armR = this.mesh.userData.armR;
+    if (isGunMode(this.weapon)) {
+      armR.rotation.x = -this.pitch * 0.9 - 0.42;
+    } else {
+      armR.rotation.x = -0.55 - this.pitch * 0.25;
+    }
+  }
+
+  applyPoseToMesh() {
+    this.mesh.position.set(this.x, this.y, this.z);
+    this.mesh.rotation.y = this.yaw;
+    this.aimRightArm();
+    this.mesh.updateMatrixWorld(true);
+  }
+
+  getMuzzlePosition() {
+    this.applyPoseToMesh();
+    if (!this.activeMuzzle) {
+      return {
+        x: this.x,
+        y: this.y + EYE_HEIGHT * 0.7,
+        z: this.z,
+      };
+    }
+    this.activeMuzzle.getWorldPosition(_muzzleWorld);
+    return { x: _muzzleWorld.x, y: _muzzleWorld.y, z: _muzzleWorld.z };
+  }
+
+  flashMuzzle() {
+    if (!this.muzzleFlash) return;
+    this.muzzleFlash.visible = true;
+    this.muzzleFlash.scale.setScalar(this.weapon === Mode.SNIPER ? 1.6 : this.weapon === Mode.AK ? 1.35 : 1.15);
+    clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => {
+      this.muzzleFlash.visible = false;
+    }, 55);
   }
 
   get aabb() {
@@ -133,6 +267,7 @@ export class RemotePlayer {
     if (typeof msg.z === 'number') this.tz = msg.z;
     if (typeof msg.yaw === 'number') this.tyaw = msg.yaw;
     if (typeof msg.pitch === 'number') this.pitch = msg.pitch;
+    if (typeof msg.mode === 'string') this.setHeld(msg.mode);
     if (typeof msg.name === 'string') {
       this.name = msg.name;
       this.label.textContent = this.name;
@@ -166,27 +301,20 @@ export class RemotePlayer {
     while (dyaw < -Math.PI) dyaw += Math.PI * 2;
     this.yaw += dyaw * lerp;
 
-    this.mesh.position.set(this.x, this.y, this.z);
-    this.mesh.rotation.y = this.yaw;
-
     const moving = Math.hypot(this.x - prevX, this.z - prevZ) > 0.002;
-    const pistol = this.weapon === 'pistol';
     if (moving) {
       this.anim += dt * 10;
       const swing = Math.sin(this.anim) * 0.5;
       this.mesh.userData.legL.rotation.x = swing;
       this.mesh.userData.legR.rotation.x = -swing;
       this.mesh.userData.armL.rotation.x = -swing * 0.5;
-      if (!pistol) this.mesh.userData.armR.rotation.x = swing * 0.5;
     } else {
       this.mesh.userData.legL.rotation.x *= 0.8;
       this.mesh.userData.legR.rotation.x *= 0.8;
       this.mesh.userData.armL.rotation.x *= 0.8;
     }
-    if (pistol) {
-      this.mesh.userData.armR.rotation.x = -this.pitch * 0.9 - 0.35;
-    }
 
+    this.applyPoseToMesh();
     this.updateLabel(camera, renderer);
   }
 
@@ -203,6 +331,7 @@ export class RemotePlayer {
   }
 
   dispose(scene) {
+    clearTimeout(this._flashTimer);
     scene.remove(this.mesh);
     this.mesh.traverse((c) => {
       if (c.geometry) c.geometry.dispose();

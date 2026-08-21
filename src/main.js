@@ -219,9 +219,11 @@ player.onRespawn = () => {
 hud.setHealth(player.health, MAX_HEALTH);
 
 net.onRemoteShot = (msg) => {
-  const origin = { x: msg.ox, y: msg.oy, z: msg.oz };
+  const remote = net.remotes.get(msg.id);
+  const origin = remote ? remote.getMuzzlePosition() : { x: msg.ox, y: msg.oy, z: msg.oz };
   const direction = { x: msg.dx, y: msg.dy, z: msg.dz };
   weapons.spawnBullet(origin, direction, false);
+  remote?.flashMuzzle();
   audio.playSpatialShot(player.position, origin);
 };
 
