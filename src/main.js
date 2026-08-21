@@ -147,7 +147,7 @@ hud = new HUD({
     resetLocalWorld(selectedMap);
     solo.start(playerName, player.position);
     hud.setInSession(true, { role: 'solo', mapId: selectedMap });
-    hud.setNetStatus(`Solo · 5 players · ${playerName}`);
+    hud.setNetStatus(`Solo · 2 players · ${playerName}`);
     hud.setScoreboard(solo.scoreboard.list(), solo.localId);
   },
   onHost: async (playerName, mapId) => {

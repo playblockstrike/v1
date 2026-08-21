@@ -16,7 +16,7 @@ const STRAFE_SPEED = 2.4;
 const ENGAGE_RANGE = 38;
 const SHOT_RANGE = 32;
 
-export const BOT_COUNT = 4;
+export const BOT_COUNT = 1;
 export const BOT_NAMES = ['Rook', 'Viper', 'Ghost', 'Hawk'];
 
 export class Bot {

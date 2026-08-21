@@ -18,7 +18,7 @@ export class HUD {
     this.overlay.id = 'overlay';
     this.overlay.innerHTML = `
       <h1>Blockstrike</h1>
-      <p class="tagline">Play solo vs bots, or host a match anyone can join</p>
+      <p class="tagline">Play solo vs a bot, or host a match anyone can join</p>
 
       <div id="lobby-panel" class="lobby-panel">
         <label class="name-row" for="player-name">
@@ -300,7 +300,7 @@ export class HUD {
       else if (role === 'solo') roleLabel = 'Solo';
       const map = mapName(mapId);
       if (role === 'solo') {
-        this.sessionLabel.textContent = `${roleLabel} · ${map} · 4 bots`;
+        this.sessionLabel.textContent = `${roleLabel} · ${map} · 1 bot`;
         this.sessionLabel.title = '';
       } else {
         const id = shortSessionId(sessionId);
